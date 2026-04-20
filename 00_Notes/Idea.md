@@ -3,6 +3,13 @@ Type: Cloned Repository
 Source: https://github.com/JStaRFilms/cstimer-trainer
 Date: 2026-04-02
 
+powershell -ExecutionPolicy Bypass -File .\scripts\serve-local.ps1 -Port 5433
+
+powershell -ExecutionPolicy Bypass -File .\scripts\verify.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\test-trainer-export-roundtrip.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\test-trainer-cloud-sync.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\preview-local.ps1
+
 
 https://github.com/cs0x7f/cstimer
 

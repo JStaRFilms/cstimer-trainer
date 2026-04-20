@@ -45,8 +45,78 @@ var exportFunc = execMain(function() {
 	function updateExpString() {
 		return storage.exportAll().then(function(exportObj) {
 			exportObj['properties'] = mathlib.str2obj(localStorage['properties']);
+			return (typeof trainerExport !== 'undefined') ? trainerExport.mergeExportObj(exportObj) : exportObj;
+		}).then(function(exportObj) {
 			expString = JSON.stringify(exportObj);
 		});
+	}
+
+	function backupTrainerData() {
+		if (typeof trainerStorage === 'undefined') {
+			return Promise.resolve({});
+		}
+		var jobs = [];
+		for (var i = 0; i < trainerStorage.TRAINER_KEYS.length; i++) {
+			jobs.push(storage.getKey(trainerStorage.TRAINER_KEYS[i]));
+		}
+		return Promise.all(jobs).then(function(values) {
+			var backup = {};
+			for (var i = 0; i < trainerStorage.TRAINER_KEYS.length; i++) {
+				if (values[i] !== undefined && values[i] !== null && values[i] !== '') {
+					backup[trainerStorage.TRAINER_KEYS[i]] = values[i];
+				}
+			}
+			return backup;
+		});
+	}
+
+	function restoreTrainerData(backup) {
+		if (typeof trainerStorage === 'undefined') {
+			return Promise.resolve();
+		}
+		var jobs = [];
+		for (var key in backup) {
+			jobs.push(storage.setKey(key, backup[key]));
+		}
+		return Promise.all(jobs);
+	}
+
+	function _getTrainerCounts(payload) {
+		payload = payload || {};
+		return {
+			hasProfile: !!payload.profile,
+			plans: payload.plans && typeof payload.plans === 'object' ? Object.keys(payload.plans).length : 0,
+			stats: Array.isArray(payload.stats) ? payload.stats.length : 0,
+			sessions: Array.isArray(payload.sessions) ? payload.sessions.length : 0
+		};
+	}
+
+	function _buildTrainerImportSummary(data, currentTrainerData) {
+		if (typeof trainerExport === 'undefined') {
+			return '';
+		}
+		var block = trainerExport.readTrainerExportBlock(data);
+		if (block === null) {
+			var currentCounts = _getTrainerCounts(currentTrainerData);
+			if (currentCounts.hasProfile || currentCounts.plans || currentCounts.stats || currentCounts.sessions) {
+				return '\nTrainer data will stay unchanged (no trainer block in this import).';
+			}
+			return '\nNo trainer data is included in this import.';
+		}
+		if (typeof trainerExport.isEmptyTrainerExportBlock === 'function' && trainerExport.isEmptyTrainerExportBlock(block)) {
+			return '\nTrainer data will be reset to clean defaults.';
+		}
+		var validation = trainerExport.validateTrainerExportBlock(block);
+		if (!validation.valid) {
+			return '\nTrainer data block is invalid and will be ignored.';
+		}
+		var currentCounts = _getTrainerCounts(currentTrainerData);
+		var incomingCounts = _getTrainerCounts(block);
+		return '\nTrainer data will be overwritten: profile ' +
+			(currentCounts.hasProfile ? 'yes' : 'no') + '→' + (incomingCounts.hasProfile ? 'yes' : 'no') +
+			', plans ' + currentCounts.plans + '→' + incomingCounts.plans +
+			', stats ' + currentCounts.stats + '→' + incomingCounts.stats +
+			', sessions ' + currentCounts.sessions + '→' + incomingCounts.sessions + '.';
 	}
 
 	function importData() {
@@ -64,7 +134,12 @@ var exportFunc = execMain(function() {
 		var sessionDelta = 0;
 		var solveAdd = 0;
 		var solveRm = 0;
-		storage.exportAll().then(function(exportObj) {
+		Promise.all([
+			storage.exportAll(),
+			(typeof trainerStorage !== 'undefined') ? trainerStorage.exportTrainerData() : Promise.resolve(null)
+		]).then(function(results) {
+			var exportObj = results[0];
+			var currentTrainerData = results[1];
 			for (var sessionIdx = 1; sessionIdx <= ~~kernel.getProp('sessionN'); sessionIdx++) {
 				var times = mathlib.str2obj(exportObj['session' + sessionIdx] || []);
 				var timesNew = mathlib.str2obj(data['session' + sessionIdx] || []);
@@ -74,31 +149,42 @@ var exportFunc = execMain(function() {
 					solveRm += Math.max(times.length - timesNew.length, 0);
 				}
 			}
+			var trainerSummary = _buildTrainerImportSummary(data, currentTrainerData);
 			if ($.confirm(IMPORT_FINAL_CONFIRM
 					.replace("%d", sessionDelta)
 					.replace("%a", solveAdd)
 					.replace("%r", solveRm)
+					+ trainerSummary
 				)) {
 				return Promise.resolve();
 			} else {
 				return Promise.reject();
 			}
 		}).then(function() {
-			if ('properties' in data) {
-				var devData = localStorage['devData'] || '{}';
-				var wcaData = localStorage['wcaData'] || '{}';
-				var gglData = localStorage['gglData'] || '{}';
-				var locData = localStorage['locData'] || '{}';
-				localStorage.clear();
-				localStorage['devData'] = devData;
-				localStorage['wcaData'] = wcaData;
-				localStorage['gglData'] = gglData;
-				localStorage['locData'] = locData;
-				localStorage['properties'] = mathlib.obj2str(data['properties']);
-				kernel.loadProp();
-			}
-			storage.importAll(data).then(function() {
-				location.reload();
+			return backupTrainerData().then(function(trainerBackup) {
+				if ('properties' in data) {
+					var devData = localStorage['devData'] || '{}';
+					var wcaData = localStorage['wcaData'] || '{}';
+					var gglData = localStorage['gglData'] || '{}';
+					var locData = localStorage['locData'] || '{}';
+					localStorage.clear();
+					localStorage['devData'] = devData;
+					localStorage['wcaData'] = wcaData;
+					localStorage['gglData'] = gglData;
+					localStorage['locData'] = locData;
+					localStorage['properties'] = mathlib.obj2str(data['properties']);
+					kernel.loadProp();
+				}
+				return storage.importAll(data).then(function() {
+					if (typeof trainerExport !== 'undefined' && 'trainer' in data) {
+						return trainerExport.processImportData(data).then(function() {
+							location.reload();
+						});
+					}
+					return restoreTrainerData(trainerBackup).then(function() {
+						location.reload();
+					});
+				});
 			});
 		}, $.noop);
 	}
@@ -142,8 +228,8 @@ var exportFunc = execMain(function() {
 	}
 
 	function getLocalDataSliced(id) {
+		var slices = {};
 		return storage.exportAll().then(function(exportObj) {
-			var slices = {};
 			var baseObj = {};
 			baseObj['properties'] = mathlib.str2obj(localStorage['properties']);
 			for (var key in exportObj) {
@@ -156,6 +242,8 @@ var exportFunc = execMain(function() {
 					baseObj[key].push(sliceHash);
 				}
 			}
+			return (typeof trainerExport !== 'undefined') ? trainerExport.mergeExportObj(baseObj) : baseObj;
+		}).then(function(baseObj) {
 			if (id != undefined) {
 				slices[id] = LZString.compressToEncodedURIComponent(JSON.stringify(baseObj));
 			}

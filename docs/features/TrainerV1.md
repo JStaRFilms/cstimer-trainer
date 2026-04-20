@@ -62,29 +62,77 @@ The trainer domain is defined by portable data types and pure functions that hav
 | `ScrambleAdapter` | csTimer scramble engine | Case-specific and full-solve scrambles |
 | `TimerBridge` | csTimer timer UI | Normalized attempt capture linked back to native solves without rewriting raw solve history |
 | `ExportBridge` | csTimer export/import format | Trainer data as separate JSON block |
+| `TrainerShell` | Shared trainer mount container | Stable entry/setup/active/review surface slots |
+| `TrainerIntegration` | StorageAdapter + CaseCatalog + Planner + TrainerShell | Session lifecycle, shell navigation helpers, and review shaping |
 
 ### Planner Logic
 
 `generateQueue(trainingPlan, skillStats, caseCatalog, plannerContext)` - pure function, no side effects, no csTimer imports. Returns ordered `DrillQueue` based on plan structure and weakness scores.
+
+Current v1 planner guarantees:
+- requested attempt count is preserved in the returned queue
+- standard sessions use warmup/focus/integration splits with review handled as post-session analysis, not queue items
+- cross sessions use `full-solve` prompts and `planTime` targeting
+- focus ordering applies weak-case bias, coverage floor, max-3 consecutive repeat protection, and per-session cap where feasible
+- review helpers derive weak cases, strong cases, and next recommendation strings from finished session data
+
+### Shared Shell Contract
+
+- later trainer UI work mounts only through the shared shell, not direct one-off DOM insertion
+- the shell owns stable surface slots for `entry`, `setup`, `active`, and `review`
+- integration helpers expose shell init/navigation plus storage-backed session lifecycle helpers
+- persisted `SkillStats.lastPracticedAt` stays in epoch milliseconds so planner recency scoring remains valid
+
+### Current Shell-Backed Surfaces
+
+- `trainer-entry-home.js` renders the first trainer landing surface from the stable mockup direction and is reachable through the explicit launcher created by `trainer-init.js`
+- `trainer-setup.js` renders the training plan setup flow (B06) with template selection, session configuration, bounded case preview, and session summary. It adapts the same shell-backed flow for last-layer, returning, and cross entry goals, then persists a `TrainingPlan` before handing off to the active session surface.
+- `trainer-active-session.js` renders the active drill queue surface (B07) for PLL, OLL, and cross practice. It consumes planner output from `trainer-integration.js`, uses the native csTimer scrambler registry with csTimer-aligned PLL/OLL case indexing for real case-correct scrambles, supports spacebar-driven start/finish timing through a document-level active-session key handler, keeps the current queue row scrolled into view as the session advances, and advances the queue into stored session results without mutating raw solve-history keys.
+- `session-review.js` renders the post-session review surface (B08) from the approved mockup direction. It shows plan metadata, summary metrics, hardest cases, a full results table, and a next-step recommendation card. Review handoff preserves the originating goal so `Drill Weak Cases` routes back into the correct setup flow for both last-layer and cross sessions.
+- `weakness-summary.js` renders the persistent weakness/stats surface and derives its values from persisted trainer sessions, stats, and catalog metadata
+- `trainer-init.js` keeps B05 additive by opening the trainer in its own overlay shell; choosing `Timer` exits back to normal csTimer. Routes the `setup` surface to `trainer-setup.js` with fallback to placeholder if unavailable
+
+### Native Integration Follow-Up
+
+- The current overlay mount is now considered transitional, not the desired end state
+- Native integration work is documented in `docs/features/TrainerNativeIntegration.md`
+- Future trainer UI passes should target the native csTimer-mounted shell rather than further investing in the floating overlay frame
+
+### Current Catalog Foundation
+
+- **Implementation files:** `src/js/trainer/case-catalog-data.js` and `src/js/trainer/case-catalog.js`
+- **Source-backed defaults:** PLL and OLL starter algorithms currently come from SpeedCubeDB PDF algorithm sheets, with provenance attached per case.
+- **Cross representation:** cross entries are stored as scramble-generated drill descriptors with internal taxonomy provenance rather than borrowed solve algorithms.
 
 ### Persistence Expectations
 
 - **Storage mechanism:** csTimer's `storage.js` abstraction via `storage.setKey()` / `storage.getKey()`. In the current repo that means IndexedDB when available, with `localStorage` fallback. Trainer uses `trainer:` prefixed keys and does not bypass the host storage layer.
 - **Key layout:** `trainer:profile`, `trainer:plans`, `trainer:activePlanId`, `trainer:stats`, `trainer:sessions`, `trainer:catalogVersion`. All registered in `kernel.js` valid-key allowlist so fallback cleanup does not purge them.
 - **Coexistence:** Trainer keys are separate from `session_XX_YY` solve chunks. Trainer never mutates csTimer solve records. Trainer linkage stores its own attempt metadata with optional native solve ID reference.
-- **Export format:** Trainer block at `$.trainer` in the exported JSON, parallel to `$.properties` and `$.session*`. Export is additive. A missing trainer block on import does not break solve import and does not clear existing trainer data.
+- **Export format:** Trainer block at `$.trainer` in the exported JSON, parallel to `$.properties` and `$.session*`. Export is additive across file export, csTimer/WCA-backed server upload-download, and Google Drive backup. A missing trainer block on import does not break solve import and does not clear existing trainer data.
+- **Import confirmation:** the normal csTimer import confirmation now summarizes trainer impact too, including unchanged/no-trainer imports, default resets from an empty trainer block, ignored invalid trainer blocks, and overwrite counts for valid trainer imports.
 - **Round-trip invariant:** export -> clear -> import -> export produces identical trainer data.
 - **Offline-first:** All data in browser-local persistence through `storage.js`. No API calls. Degrades to in-memory if storage is unavailable.
 - Full details: `docs/architecture/persistence-plan.md`
 - Compatibility checklist: `docs/architecture/export-import-compatibility.md`
 
-## UI Surfaces Requiring Design
+## UI Surfaces Status
 
-- trainer entry point
-- goal/plan setup
-- active session queue
-- end-of-session review
-- weakness/stats summary
+All five v1 surfaces are implemented and shipped behind the overlay shell:
+
+| Surface | Module | Status |
+|---------|--------|--------|
+| Trainer entry / goal selection | `trainer-entry-home.js` | Implemented (B05) |
+| Training plan setup | `trainer-setup.js` | Implemented (B06) |
+| Active session / drill queue | `trainer-active-session.js` | Implemented (B07) |
+| Post-session review | `session-review.js` | Implemented (B08) |
+| Weakness / stats summary | `weakness-summary.js` | Implemented (B05) |
+
+### Surfaces Still Requiring Design Passes
+
+- native csTimer-mounted shell (see `TrainerNativeIntegration.md`)
+- mobile polish beyond functional responsive layout
+- visual polish of case diagram placeholders in active session
 
 ## Regression Risks
 
@@ -143,3 +191,11 @@ Full boundary definitions: `docs/architecture/domain-boundaries.md`
 - X-cross and advanced opening trainers
 - virtual cube support for case practice without a physical cube
 - live social or call-based collaborative training
+- orientation-aware start-state modeling so the same named case can be tracked by angle, AUF, slot, and other human-meaningful start-state differences
+
+### Future Modeling Reminder
+
+When future work adds richer case families such as F2L or more advanced start-state trainers, the trainer should avoid collapsing meaningful start-state variants into one case-level average when those variants materially change recognition or execution.
+
+Reference blueprint:
+- `docs/features/OrientationAwareStartStateModel.md`

@@ -1137,12 +1137,18 @@ var kernel = execMain(function() {
 		$(document).keydown(function(e) {
 			$.waitUser.call();
 			keyback = true;
+			if (typeof trainerInit !== "undefined" && trainerInit.isActive && trainerInit.isActive()) {
+				return keyback;
+			}
 			pushSignal('keydown', e);
 			timer.onkeydown(e);
 			return keyback;
 		});
 		$(document).keyup(function(e) {
 			keyback = true;
+			if (typeof trainerInit !== "undefined" && trainerInit.isActive && trainerInit.isActive()) {
+				return keyback;
+			}
 			pushSignal('keyup', e);
 			timer.onkeyup(e);
 			return keyback;
@@ -1228,7 +1234,9 @@ var kernel = execMain(function() {
 	});
 
 	function cleanLocalStorage() {
-		var validKeys = ['properties', 'cachedScr', 'devData', 'wcaData', 'gglData', 'locData'];
+		var validKeys = ['properties', 'cachedScr', 'devData', 'wcaData', 'gglData', 'locData',
+			'trainer:profile', 'trainer:plans', 'trainer:activePlanId',
+			'trainer:stats', 'trainer:sessions', 'trainer:catalogVersion'];
 
 		for (var i = 0; i < validKeys.length; i++) {
 			try {
