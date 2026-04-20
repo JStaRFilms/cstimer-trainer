@@ -48,16 +48,17 @@ Rule: do not treat new ideas as a new batch. Keep appending to the same queue be
 6. Implement `Randomize Order` as a real user-facing planner option, or remove the control if the planner will stay deterministic.
 7. If `adaptive waiting` is intended, add actual pacing or recognition-gating logic rather than a static remaining-time estimate.
 8. Tighten the cross drill workflow so it produces a clearer, more realistic cross practice experience.
-9. Improve mobile layout behavior and the visual polish of the active-session placeholders.
-10. Review whether any additional trainer state should persist across app restarts and be restored intentionally.
-11. Add or update regression tests whenever queue logic, persistence, export/import, or native mounting changes.
-12. Design and implement orientation-aware start-state modeling so the trainer can distinguish the same named case by angle, AUF, slot, or similar human-meaningful variant data.
-13. Start with PLL orientation or AUF-sensitive starts so the trainer can identify cases like "J perm with required U" instead of only "J perm".
-14. Keep recognition time and execution time separate in any future variant-aware analytics and recommendation logic.
-15. Apply the same modeling rule to F2L and future case families where pair location, slot target, or start angle materially changes real human difficulty.
-16. Extend recommendation logic so it can suggest either a better algorithm for the exact variant or a better pre-turn or setup strategy for that variant.
-17. Update the feature docs and FR issue notes whenever a remaining item gets completed.
-18. Keep any new ideas in this same queue, in priority order, rather than starting a new batch.
+9. Replace the blank active-session center square with real case imagery or state rendering, following csTimer's existing case-visual approach where possible.
+10. Improve mobile layout behavior and the visual polish of the active-session placeholders.
+11. Review whether any additional trainer state should persist across app restarts and be restored intentionally.
+12. Add or update regression tests whenever queue logic, persistence, export/import, or native mounting changes.
+13. Design and implement orientation-aware start-state modeling so the trainer can distinguish the same named case by angle, AUF, slot, or similar human-meaningful variant data.
+14. Start with PLL orientation or AUF-sensitive starts so the trainer can identify cases like "J perm with required U" instead of only "J perm".
+15. Keep recognition time and execution time separate in any future variant-aware analytics and recommendation logic.
+16. Apply the same modeling rule to F2L and future case families where pair location, slot target, or start angle materially changes real human difficulty.
+17. Extend recommendation logic so it can suggest either a better algorithm for the exact variant or a better pre-turn or setup strategy for that variant.
+18. Update the feature docs and FR issue notes whenever a remaining item gets completed.
+19. Keep any new ideas in this same queue, in priority order, rather than starting a new batch.
 
 ## Future Roadmap Items
 
